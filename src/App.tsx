@@ -2029,14 +2029,22 @@ export default function App() {
     return cleanFleet.filter(v => normalizeToISODate(v.date) === activeDate);
   }, [cleanFleet, dateRange.start, currentDayISO]);
 
-  const fetchData = async (retryCount = 0) => {
+  const fetchData = async (retryCount = 0, forceRefresh = false) => {
     setLoading(true);
     try {
-      const res = await fetch('/api/fleet');
+      const endpoint = forceRefresh ? '/api/fleet?refresh=true' : '/api/fleet';
+      const res = await fetch(endpoint, { cache: 'no-store' });
       const contentType = res.headers.get('content-type') || '';
       
       if (!res.ok) {
-        throw new Error(`Servidor respondeu com status ${res.status}`);
+        let detail = '';
+        try {
+          const errorBody = await res.json();
+          detail = errorBody?.error || errorBody?.details || '';
+        } catch {
+          // Mantém a mensagem HTTP caso o servidor não retorne JSON.
+        }
+        throw new Error(detail || `Servidor respondeu com status ${res.status}`);
       }
 
       let data: any;
@@ -2065,7 +2073,7 @@ export default function App() {
       console.warn(`Tentativa de carregar frota falhou (${retryCount + 1}/3):`, err?.message || err);
       if (retryCount < 2) {
         setTimeout(() => {
-          fetchData(retryCount + 1);
+          fetchData(retryCount + 1, forceRefresh);
         }, 1500);
       } else {
         setLoading(false);
@@ -2256,7 +2264,7 @@ export default function App() {
               </span>
             )}
             <button 
-              onClick={fetchData}
+              onClick={() => fetchData(0, true)}
               disabled={loading}
               className="p-2 text-[#bac9cc] hover:text-[#00e5ff] transition-colors disabled:opacity-50 group"
               title="Sincronizar com Google Sheets"
